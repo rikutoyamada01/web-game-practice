@@ -28,7 +28,11 @@ Each directory in this repository corresponds to a separate small practice proje
     ```bash
     cd <project-folder>
     ```
-3.  **Open the `index.html` file in your browser** to see the result.
+3.  **Open the `index.html` file in your browser** 
+to see the result.
+    ```bash
+    npx parcel <game-folder>/index.html
+    ```
 
 ## 📄 License
 

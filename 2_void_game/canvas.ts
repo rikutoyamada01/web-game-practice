@@ -112,7 +112,7 @@ function movePlayer(e: MouseEvent) {
 }
 
 canvas.addEventListener("mouseover", (e) => {
-    raf = window.requestAnimationFrame(draw);
+    raf = window.requestAnimationFrame(loop);
 })
 
 canvas.addEventListener("mouseout", (e) => {

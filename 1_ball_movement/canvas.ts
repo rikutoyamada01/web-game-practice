@@ -90,9 +90,9 @@ async function init() {
 
     try {
         await Promise.all([
-            loadImage(sunImage, 'img/canvas_sun.png'),
-            loadImage(earthImage, 'img/canvas_earth.png'),
-            loadImage(moonImage, 'img/canvas_moon.png')
+            loadImage(sunImage, new URL('img/canvas_sun.png', import.meta.url).href),
+            loadImage(earthImage, new URL('img/canvas_earth.png', import.meta.url).href),
+            loadImage(moonImage, new URL('img/canvas_moon.png', import.meta.url).href)
         ]);
     } catch (error) {
         console.error("画像の読み込みに失敗しました:", error);

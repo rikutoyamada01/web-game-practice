@@ -4,3 +4,7 @@ dist/
 .vscode/
 .env
 *.log
+
+cache/
+.parcel-cache/
+.cache/
