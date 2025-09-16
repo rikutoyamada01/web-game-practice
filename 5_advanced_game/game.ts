@@ -33,6 +33,9 @@ class TitleScene extends Phaser.Scene {
                 this.scene.start('GameScene');
             }
         );
+        this.input.keyboard?.once('keydown-SPACE', () => {
+            this.scene.start('GameScene');
+        });
     }
 }
 
@@ -40,9 +43,13 @@ class GameScene extends Phaser.Scene {
     player!: Player;
     enemies!: Phaser.Physics.Arcade.Group;
     particleEmitter!: Phaser.GameObjects.Particles.ParticleEmitter;
-    particle!: Phaser.GameObjects.Particles.ParticleEmitter;
     cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     score!: ScoreText;
+    
+    // テクスチャキャッシュ用
+    private enemyTextureCache: Map<number, string> = new Map();
+    private textureCounter: number = 0;
+
     constructor() {
         super({ key: 'GameScene' });
     }
@@ -50,12 +57,12 @@ class GameScene extends Phaser.Scene {
     preload() {
         this.load.image('particle', 'img/particle.png');
         this.load.image('player', 'img/player.png');
-        this.load.image('enemy', 'img/enemy.png');
     }
 
     create() {
         this.cursors = this.input.keyboard?.createCursorKeys()!;
         this.physics.world.setBounds(0, 0, 2000, 2000);
+        
         this.player = new Player(this, this.cameras.main.centerX, this.cameras.main.centerY);
         this.player.init(25, 200);
         this.player.setCollideWorldBounds(true);
@@ -93,14 +100,35 @@ class GameScene extends Phaser.Scene {
         const y = Phaser.Math.Between(0, 2000);
         const enemy = this.enemies.get(x, y) as Enemy;
 
-        enemy.init(20, 100);
+        if (enemy) {
+            const randomRadius = Phaser.Math.Between(10, 40);
+            const enemyTexture = this.getEnemyTexture(randomRadius);
+            
+            enemy.init(randomRadius, 100, enemyTexture);
+            enemy.setCollideWorldBounds(true);
+            enemy.enableBody(true, x, y, true, true);
 
-        enemy.setCollideWorldBounds(true);
-        enemy.enableBody(true, x, y, true, true);
+            this.physics.add.collider(this.player, enemy, () => {
+                this.handlePlayerEnemyCollision(this.player, enemy);
+            });
+        }
+    }
 
-        this.physics.add.collider(this.player, enemy, () => {
-            this.handlePlayerEnemyCollision(this.player, enemy);
-        });
+    private getEnemyTexture(radius: number): string {
+        if (this.enemyTextureCache.has(radius)) {
+            return this.enemyTextureCache.get(radius)!;
+        }
+
+        const textureKey = `enemy_${radius}_${this.textureCounter++}`;
+        const graphics = this.add.graphics();
+        const colorValue = Phaser.Display.Color.RandomRGB().color;
+        graphics.fillStyle(colorValue, 1);
+        graphics.fillCircle(radius, radius, radius);
+        graphics.generateTexture(textureKey, radius * 2, radius * 2);
+        graphics.destroy();
+
+        this.enemyTextureCache.set(radius, textureKey);
+        return textureKey;
     }
 
     private handlePlayerEnemyCollision(player: Player, enemy: Enemy) {
@@ -109,13 +137,15 @@ class GameScene extends Phaser.Scene {
             enemy.disableBody(true, true);
             this.spawnEnemy();
             this.score.setScore(this.score.score + 1);
-        } else if (player.radius < enemy.radius) {
+
+            player.growSize( Math.sqrt(enemy.radius) * 0.5 );
+        } else if (player.radius <= enemy.radius) {
             this.scene.start('GameOverScene');
         }
     }
 
     private playParticleEffect(x: number, y: number) {
-        this.particleEmitter.explode(100, x, y);
+        this.particleEmitter.explode(15, x, y);
     }
 }
 
@@ -142,6 +172,9 @@ class GameOverScene extends Phaser.Scene {
         this.input.once('pointerup', () => {
             this.scene.start('GameScene');
         });
+        this.input.keyboard?.once('keydown-SPACE', () => {
+            this.scene.start('GameScene');
+        });
     }
 }
 
@@ -149,9 +182,10 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     radius: number = 25;
     speed: number = 200;
     body!: Phaser.Physics.Arcade.Body;
+    private baseTexture: string = 'player_base';
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
-        super(scene, x, y, 'player');
+        super(scene, x, y, '');
         scene.add.existing(this);
         scene.physics.add.existing(this);
     }
@@ -159,19 +193,29 @@ class Player extends Phaser.Physics.Arcade.Sprite {
     init(radius: number, speed: number) {
         this.radius = radius;
         this.speed = speed;
-
-        const graphics = this.scene.add.graphics();
-        graphics.fillStyle(0x0000ff, 1);
-        graphics.fillCircle(radius, radius, radius);
-        graphics.generateTexture('player', radius * 2, radius * 2);
-        this.setTexture('player');
-        graphics.destroy();
-
-
+        this.updateTexture();
         this.body.setCollideWorldBounds(true);
-        this.setCircle(radius);
     }
 
+    private updateTexture() {
+        const textureKey = `player_${this.radius}`;
+        
+        if (!this.scene.textures.exists(textureKey)) {
+            const graphics = this.scene.add.graphics();
+            graphics.fillStyle(0x0000ff, 1);
+            graphics.fillCircle(this.radius, this.radius, this.radius);
+            graphics.generateTexture(textureKey, this.radius * 2, this.radius * 2);
+            graphics.destroy();
+        }
+        
+        this.setTexture(textureKey);
+        this.setCircle(this.radius);
+    }
+
+    growSize(sizeIncrease: number) {
+        this.radius += sizeIncrease;
+        this.updateTexture();
+    }
 
     move(cursors: Phaser.Types.Input.Keyboard.CursorKeys) {
         const body = this.body;
@@ -189,7 +233,7 @@ class Player extends Phaser.Physics.Arcade.Sprite {
             body.setVelocity(vec.x, vec.y);
         } else {
             body.setVelocity(0, 0);
-        };
+        }
     }
 }
 
@@ -200,31 +244,26 @@ class Enemy extends Phaser.Physics.Arcade.Sprite {
     moveTimer: number = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
-        super(scene, x, y, 'enemy');
+        super(scene, x, y, '');
         scene.add.existing(this);
         scene.physics.add.existing(this);
         this.body.setCollideWorldBounds(true);
     }
 
-    init(radius: number, speed: number) {
-        const graphics = this.scene.add.graphics();
-        graphics.fillStyle(0xff0000, 1);
-        graphics.fillCircle(radius, radius, radius);
-        graphics.generateTexture('enemy', radius * 2, radius * 2);
-        this.setTexture('enemy');
-        graphics.destroy();
-
+    init(radius: number, speed: number, textureKey: string) {
         this.radius = radius;
         this.speed = speed;
         this.moveTimer = 0;
+        
+        this.setTexture(textureKey);
         this.setCircle(radius);
         this.body.setCollideWorldBounds(true);
     }
 
-
     move() {
         this.moveTimer -= 1;
         if (this.moveTimer > 0) return;
+        
         this.moveTimer = Phaser.Math.Between(30, 120);
         let vec = Phaser.Math.RandomXY(new Phaser.Math.Vector2(), 1);
         if (vec.lengthSq() > 0) {
